@@ -1,53 +1,52 @@
 #!/usr/bin/env python3
-'''A module with tools for request caching and tracking.'''
+"""
+Caching request module
+"""
 import redis
 import requests
 from functools import wraps
 from typing import Callable
 
 
-redis_store = redis.Redis()
-'''The module-level Redis instance.'''
-
-
-def data_cacher(method: Callable) -> Callable:
-    '''Decorator to cache the output of fetched data.
+def track_get_page(fn: Callable) -> Callable:
+    """Decorator to track and cache HTTP GET requests.
 
     Args:
-        method (Callable): The function to be decorated.
+        fn (Callable): The function to be decorated.
 
     Returns:
         Callable: The decorated function.
-    '''
-    @wraps(method)
-    def invoker(url) -> str:
-        '''Wrapper function for caching the output.
+    """
+    @wraps(fn)
+    def wrapper(url: str) -> str:
+        """Wrapper function to cache and track HTTP GET requests.
 
         Args:
-            url (str): The URL to fetch data from.
+            url (str): The URL to request data from.
 
         Returns:
-            str: The content of the URL.
-        '''
-        redis_store.incr(f'count:{url}')
-        result = redis_store.get(f'result:{url}')
-        if result:
-            return result.decode('utf-8')
-        result = method(url)
-        redis_store.set(f'count:{url}', 0)
-        redis_store.setex(f'result:{url}', 10, result)
-        return result
-    return invoker
+            str: The response content.
+        """
+        client = redis.Redis()
+        client.incr(f'count:{url}')
+        cached_page = client.get(f'{url}')
+        if cached_page:
+            return cached_page.decode('utf-8')
+        response = fn(url)
+        client.set(f'{url}', response, 10)
+        return response
+    return wrapper
 
 
-@data_cacher
+@track_get_page
 def get_page(url: str) -> str:
-    '''Fetches the content of a URL, caches the response, and tracks the request.
+    """Makes an HTTP GET request to the specified URL.
 
     Args:
-        url (str): The URL to fetch data from.
+        url (str): The URL to request data from.
 
     Returns:
-        str: The content of the URL.
-    '''
-    return requests.get(url).text
+        str: The response content.
+    """
+    response = requests.get(url)
+    return response.text
