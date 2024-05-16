@@ -1,24 +1,36 @@
-!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-Defines a function `get_page`
+Caching request module
 """
 import redis
 import requests
-from datetime import timedelta
+from functools import wraps
+from typing import Callable
 
 
+def track_get_page(fn: Callable) -> Callable:
+    """ Decorator for get_page
+    """
+    @wraps(fn)
+    def wrapper(url: str) -> str:
+        """ Wrapper that:
+            - check whether a url's data is cached
+            - tracks how many times get_page is called
+        """
+        client = redis.Redis()
+        client.incr(f'count:{url}')
+        cached_page = client.get(f'{url}')
+        if cached_page:
+            return cached_page.decode('utf-8')
+        response = fn(url)
+        client.set(f'{url}', response, 10)
+        return response
+    return wrapper
+
+
+@track_get_page
 def get_page(url: str) -> str:
+    """ Makes a http request to a given endpoint
     """
-    It uses the requests module to obtain
-    the HTML content of a particular URL and returns it.
-    Args:
-        url (str): url whose content is to be fectched
-    Returns:
-        html (str): the HTML content of the url
-    """
-    r = redis.Redis()
-    key = "count:{}{}{}".format('{', url, '}')
-    r.incr(key)
-    res = requests.get(url)
-    r.setex(url, timedelta(seconds=10), res.text)
-    return res.text
+    response = requests.get(url)
+    return response.text
